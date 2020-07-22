@@ -9,15 +9,7 @@ __pycache__/
 # Pycharm
 .idea
 
-# Files
-*.txt
-*.csv
-*.png
-*.jpg
-*.fits
-
 # Analysis output files
-*.pkl
 *.mp4
 *.gif
 
