@@ -5,6 +5,7 @@ import numpy as np
 from astropy.table import Table
 from time import time
 from spectra_collection_functions import CollectionParameters, read_pkl_spectra
+from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 # from MulticoreTSNE import MulticoreTSNE as TSNE
 
@@ -76,7 +77,8 @@ np.savez('GALAH_spektri_vaja',
          valovne_dolzine=ccd3_wvl_use,
          galah_spektri=spectra_ccd3_selected)
 
-# TODO: Export stellar parameters
+# export stellar parameters
+general_data['sobject_id', 'teff', 'fe_h' 'logg', 'vsini', 'vmic', 'alpha_fe', 'flag_sp'][idx_sobj_selection].write('GALAH_spektri_vaja_parametri.fits')
 
 # --------------------------------------------------------
 # ---------------- Test run by t-SNE ---------------------
@@ -116,7 +118,7 @@ for tsne_c in np.unique(tsne_classes['tsne_class']):
     if np.sum(idx_sobj_tsne):
         ax.scatter(tsne_res[idx_sobj_tsne, 0], tsne_res[idx_sobj_tsne, 1], lw=0, s=2, alpha=1., label=tsne_c)
 
-ax.set(xlabel='t-SNE axis 1', ylabel='t-SNE axis 2')
+ax.set(xlabel='t-SNE koordinata 1', ylabel='t-SNE koordinata 2')
 lgnd = ax.legend()
 # increase size of dots in legend
 for lgnd_item in lgnd.legendHandles:
@@ -126,4 +128,66 @@ for lgnd_item in lgnd.legendHandles:
         pass
 fig.tight_layout()
 fig.savefig('tsne_test.png', dpi=300)
+plt.close(fig)
+
+# --------------------------------------------------------
+# ---------------- Test run by PCA -----------------------
+# --------------------------------------------------------
+print('Running PCA decomposition')
+
+n_pca_comp = 10
+pca_class = PCA(n_components=n_pca_comp)
+pca_res = pca_class.fit_transform(spectra_ccd3_selected)
+
+# export pca components
+np.savez('GALAH_spektri_pca_komponente',
+         tsne_koordinate=pca_res)
+
+# plot all components
+fig, ax = plt.subplots(n_pca_comp, n_pca_comp,
+                       figsize=(15, 15), sharex='col', sharey='row')
+
+for i_x in range(n_pca_comp):
+    for i_y in range(n_pca_comp):
+        ax[i_y, i_x].scatter(pca_res[:, i_x], pca_res[:, i_y], lw=0, s=2, alpha=0.3, c='black', label='')
+
+        if i_x == 0:
+            ax[i_y, i_x].set(ylabel=f'Komponenta {i_y+1:d}',
+                             ylim=np.percentile(pca_res[:, i_y], [0.5, 99.5]))
+
+        if i_y == n_pca_comp - 1:
+            ax[i_y, i_x].set(xlabel=f'Komponenta {i_x+1:d}',
+                         xlim=np.percentile(pca_res[:, i_x], [0.5, 99.5]))
+
+fig.align_xlabels()
+fig.align_ylabels()
+
+fig.tight_layout()
+fig.subplots_adjust(hspace=0, wspace=0)
+fig.savefig('pca_test_vse.png', dpi=250)
+plt.close(fig)
+
+# plot only the first two components
+fig, ax = plt.subplots(1, 1, figsize=(7, 7))
+ax.scatter(pca_res[:, 0], pca_res[:, 1], lw=0, s=2, alpha=0.3, c='grey', label='')
+
+# add colours for identified tSNE classes
+for tsne_c in np.unique(tsne_classes['tsne_class']):
+    sobj_ids = tsne_classes[tsne_classes['tsne_class'] == tsne_c]['sobject_id']
+    idx_sobj_tsne = np.in1d(final_sobj_selection, sobj_ids)
+
+    if np.sum(idx_sobj_tsne):
+        ax.scatter(pca_res[idx_sobj_tsne, 0], pca_res[idx_sobj_tsne, 1], lw=0, s=2, alpha=1., label=tsne_c)
+
+ax.set(xlabel='PCA komponenta 1', ylabel='PCA komponenta 2')
+lgnd = ax.legend()
+# increase size of dots in legend
+# for lgnd_item in lgnd.legendHandles:
+#     try:
+#         lgnd_item.set_sizes([8.0])
+#     except:
+#         pass
+
+fig.tight_layout()
+fig.savefig('pca_test_2d.png', dpi=300)
 plt.close(fig)
