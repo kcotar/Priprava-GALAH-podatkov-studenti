@@ -2,7 +2,7 @@ import matplotlib as mpl
 mpl.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
-from astropy.table import Table
+from astropy.table import Table, join
 from time import time
 from spectra_collection_functions import CollectionParameters, read_pkl_spectra
 from sklearn.decomposition import PCA
@@ -20,6 +20,7 @@ galah_data_dir = '/shared/mari/cotar/'
 # additional data and products about observed spectra
 general_data = Table.read(galah_data_dir + 'sobject_iraf_53_reduced_'+date_string+'.fits')
 params_data = Table.read(galah_data_dir + 'GALAH_DR3_main_200331.fits')
+general_data = join(general_data, params_data, keys='sobject_id', join_type='left')
 
 # auxiliary tsne list
 tsne_classes = Table.read(galah_data_dir + 'tsne_classification_dr52_2018_04_09.csv', format='ascii.csv')
@@ -28,7 +29,7 @@ spectra_ccd3_pkl = 'galah_dr53_ccd3_6475_6745_wvlstep_0.060_ext4_'+date_string+'
 # parse interpolation and averaging settings from filename
 ccd3_wvl = CollectionParameters(spectra_ccd3_pkl).get_wvl_values()
 idx_read_ccd3 = np.where(np.logical_and(ccd3_wvl >= 6550,
-                                        ccd3_wvl <= 6650))[0]
+                                        ccd3_wvl <= 6675))[0]
 ccd3_wvl_use = ccd3_wvl[idx_read_ccd3]
 
 print('Reading resampled GALAH spectra')
@@ -41,7 +42,7 @@ print('Creating list of spectra')
 sobj_selection = list([])
 
 n_per_class = 300
-n_random_other = 3000
+n_random_other = 4000
 
 # select spectra determined by the Gregors' DR2 tSNE projection
 for tsne_c in np.unique(tsne_classes['tsne_class']):
@@ -69,23 +70,51 @@ spectra_ccd3_selected = spectra_ccd3[idx_sobj_selection, :]
 print('Shape of the final selection', spectra_ccd3_selected.shape)
 
 # --------------------------------------------------------
-# ---------------- Save final output ---------------------
+# ---------------- Save final outputs --------------------
 # --------------------------------------------------------
-# final outputs
+# final spectroscopic outputs
 print('Saving output file')
 np.savez('GALAH_spektri_vaja',
          valovne_dolzine=ccd3_wvl_use,
          galah_spektri=spectra_ccd3_selected)
 
+# prepare only the most essential stellar parameters
+params_data_out = general_data['sobject_id', 'teff', 'fe_h', 'logg', 'vbroad', 'vmic', 'alpha_fe', 'flag_sp'][idx_sobj_selection]
+params_data_out['class'] = '                        '
+
+# mark a subset of selected spectra with the training class flags
+# at the same time create plots for selected examples
+n_flag_p_class = 10
+for tsne_c in np.unique(tsne_classes['tsne_class']):
+    fig, ax = plt.subplots(1, 1, figsize=(11, 3))
+
+    sobj_ids = tsne_classes[np.logical_and(tsne_classes['tsne_class'] == tsne_c,
+                                           np.in1d(tsne_classes['sobject_id'], params_data_out['sobject_id']))]['sobject_id']
+
+    sobj_class = np.random.choice(sobj_ids, size=n_flag_p_class, replace=False)
+    idx_class_mark = np.in1d(params_data_out['sobject_id'], sobj_class)
+
+    params_data_out['class'][idx_class_mark] = tsne_c
+
+    for idx_spec in np.where(idx_class_mark)[0]:
+        ax.plot(ccd3_wvl_use, spectra_ccd3_selected[idx_spec, :], lw=0.2)
+
+    ax.set(xlabel=u'Valovna dolzina [$\AA$]', ylabel=u'Normaliziran fluks',
+           xlim=[ccd3_wvl_use[0], ccd3_wvl_use[-1]], ylim=[0.4, 1.1])
+    ax.grid(ls='--', color='black', alpha=0.2)
+    fig.tight_layout()
+    fig.savefig('primeri_razred_'+tsne_c+'.pdf')
+    plt.close(fig)
+
 # export stellar parameters
-general_data['sobject_id', 'teff', 'fe_h' 'logg', 'vsini', 'vmic', 'alpha_fe', 'flag_sp'][idx_sobj_selection].write('GALAH_spektri_vaja_parametri.fits')
+params_data_out.write('GALAH_spektri_vaja_parametri.fits', overwrite=True)
 
 # --------------------------------------------------------
 # ---------------- Test run by t-SNE ---------------------
 # --------------------------------------------------------
 print('Running tSNE projection')
 
-perp = 50
+perp = 80
 theta = 0.5
 
 tsne_class = TSNE(n_components=2,
@@ -96,8 +125,9 @@ tsne_class = TSNE(n_components=2,
                   n_iter=1000,
                   n_iter_without_progress=350,
                   init='random',
-                  # n_jobs=30,  # new in scikit-learn version 0.22
-                  verbose=1)
+                  n_jobs=8,  # new in scikit-learn version 0.22
+                  verbose=1
+                  )
 
 tsne_start = time()
 tsne_res = tsne_class.fit_transform(spectra_ccd3_selected)
@@ -123,9 +153,10 @@ lgnd = ax.legend()
 # increase size of dots in legend
 for lgnd_item in lgnd.legendHandles:
     try:
-        lgnd_item.set_sizes([8.0])
+        lgnd_item.set_sizes([10.0])
     except:
         pass
+
 fig.tight_layout()
 fig.savefig('tsne_test.png', dpi=300)
 plt.close(fig)
@@ -135,7 +166,7 @@ plt.close(fig)
 # --------------------------------------------------------
 print('Running PCA decomposition')
 
-n_pca_comp = 10
+n_pca_comp = 6
 pca_class = PCA(n_components=n_pca_comp)
 pca_res = pca_class.fit_transform(spectra_ccd3_selected)
 
@@ -177,16 +208,19 @@ for tsne_c in np.unique(tsne_classes['tsne_class']):
     idx_sobj_tsne = np.in1d(final_sobj_selection, sobj_ids)
 
     if np.sum(idx_sobj_tsne):
-        ax.scatter(pca_res[idx_sobj_tsne, 0], pca_res[idx_sobj_tsne, 1], lw=0, s=2, alpha=1., label=tsne_c)
+        ax.scatter(pca_res[idx_sobj_tsne, 0], pca_res[idx_sobj_tsne, 1], lw=0, s=3, alpha=1., label=tsne_c)
 
-ax.set(xlabel='PCA komponenta 1', ylabel='PCA komponenta 2')
+ax.set(xlabel='PCA komponenta 1', ylabel='PCA komponenta 2',
+       xlim=np.percentile(pca_res[:, 0], [0.5, 99.5]),
+       ylim=np.percentile(pca_res[:, 1], [0.5, 99.5])
+       )
 lgnd = ax.legend()
 # increase size of dots in legend
-# for lgnd_item in lgnd.legendHandles:
-#     try:
-#         lgnd_item.set_sizes([8.0])
-#     except:
-#         pass
+for lgnd_item in lgnd.legendHandles:
+    try:
+        lgnd_item.set_sizes([10.0])
+    except:
+        pass
 
 fig.tight_layout()
 fig.savefig('pca_test_2d.png', dpi=300)

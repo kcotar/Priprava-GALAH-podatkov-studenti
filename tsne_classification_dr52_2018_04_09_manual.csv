@@ -1,0 +1,31 @@
+# Dictionary: 
+#
+# BIN - Binary
+# TRI - Triple
+# HAE - Halpha emission
+# HBE - Hbeta emission
+# HAE_HBE - 
+# HFR_HAE_BIN - 
+# WRD - weird (very general)
+# MAB - Molecular absorption bands
+# CMP - Cool metal poor giants
+# HOT - Hot stars:)
+# HFR - Hot fast rotators
+# TAB - Telluric absorption
+# TEM - Telluric emission
+# SPI - Spikes
+# NTR - Nothing to report
+# CEH - Carbon-enhanced (SWAN bands)
+
+# Statistics
+# 
+# BIN 		12873
+# CEH 		860
+# CMP 		15175
+# HAE 		197
+# HAE_HBE 	266
+# HFR 		39717
+# HFR_HAE_BIN 	2368
+# MAB 		30591
+# TRI 		30
+# WRD 		3286
