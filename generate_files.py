@@ -31,6 +31,7 @@ ccd3_wvl = CollectionParameters(spectra_ccd3_pkl).get_wvl_values()
 idx_read_ccd3 = np.where(np.logical_and(ccd3_wvl >= 6550,
                                         ccd3_wvl <= 6675))[0]
 ccd3_wvl_use = ccd3_wvl[idx_read_ccd3]
+idx_ccd_halpha = np.abs(ccd3_wvl_use - 6562.7) < 3
 
 print('Reading resampled GALAH spectra')
 spectra_ccd3 = read_pkl_spectra(galah_data_dir + spectra_ccd3_pkl, read_cols=idx_read_ccd3)
@@ -41,8 +42,8 @@ spectra_ccd3 = read_pkl_spectra(galah_data_dir + spectra_ccd3_pkl, read_cols=idx
 print('Creating list of spectra')
 sobj_selection = list([])
 
-n_per_class = 300
-n_random_other = 4000
+n_per_class = 850
+n_random_other = 24000
 
 # select spectra determined by the Gregors' DR2 tSNE projection
 for tsne_c in np.unique(tsne_classes['tsne_class']):
@@ -61,20 +62,34 @@ print(' Class: random')
 sobj_ids = general_data[np.in1d(general_data['sobject_id'], tsne_classes['sobject_id'], invert=True)]['sobject_id']
 sobj_rand = np.random.choice(sobj_ids, size=n_random_other, replace=False)
 sobj_selection.append(sobj_rand)
+sobj_selection = np.hstack(sobj_selection)
+
+# remove previously already prepared spectra data
+old_sobj = Table.read('GALAH_spektri_vaja_parametri.fits')
+sobj_selection = sobj_selection[np.in1d(sobj_selection, old_sobj['sobject_id'], invert=True)]
 
 # create a spectral subset
-idx_sobj_selection = np.in1d(general_data['sobject_id'], np.hstack(sobj_selection))
-final_sobj_selection = general_data['sobject_id'][idx_sobj_selection]
+idx_sobj_selection = np.in1d(general_data['sobject_id'], sobj_selection)
 spectra_ccd3_selected = spectra_ccd3[idx_sobj_selection, :]
+final_sobj_selection = general_data['sobject_id'][idx_sobj_selection]
+# remove strange spectra
+idx_ok = np.logical_not(np.logical_or((spectra_ccd3_selected < 0).any(axis=1),
+                                      (spectra_ccd3_selected[:, np.logical_not(idx_ccd_halpha)] > 1.1).any(axis=1)))
+# create a final spectral subset
+spectra_ccd3_selected = spectra_ccd3_selected[idx_ok, :]
+final_sobj_selection = final_sobj_selection[idx_ok]
+idx_sobj_selection = np.in1d(general_data['sobject_id'], final_sobj_selection)
 
 print('Shape of the final selection', spectra_ccd3_selected.shape)
 
 # --------------------------------------------------------
 # ---------------- Save final outputs --------------------
 # --------------------------------------------------------
+suffx = '_2'
+
 # final spectroscopic outputs
 print('Saving output file')
-np.savez('GALAH_spektri_vaja',
+np.savez('GALAH_spektri_vaja' + suffx,
          valovne_dolzine=ccd3_wvl_use,
          galah_spektri=spectra_ccd3_selected)
 
@@ -90,6 +105,9 @@ for tsne_c in np.unique(tsne_classes['tsne_class']):
 
     sobj_ids = tsne_classes[np.logical_and(tsne_classes['tsne_class'] == tsne_c,
                                            np.in1d(tsne_classes['sobject_id'], params_data_out['sobject_id']))]['sobject_id']
+
+    if len(sobj_ids) <= 1:
+        continue
 
     sobj_class = np.random.choice(sobj_ids, size=n_flag_p_class, replace=False)
     idx_class_mark = np.in1d(params_data_out['sobject_id'], sobj_class)
@@ -107,7 +125,7 @@ for tsne_c in np.unique(tsne_classes['tsne_class']):
     plt.close(fig)
 
 # export stellar parameters
-params_data_out.write('GALAH_spektri_vaja_parametri.fits', overwrite=True)
+params_data_out.write('GALAH_spektri_vaja_parametri' + suffx + '.fits', overwrite=True)
 
 # --------------------------------------------------------
 # ---------------- Test run by t-SNE ---------------------
@@ -125,7 +143,7 @@ tsne_class = TSNE(n_components=2,
                   n_iter=1000,
                   n_iter_without_progress=350,
                   init='random',
-                  n_jobs=8,  # new in scikit-learn version 0.22
+                  n_jobs=32,  # new in scikit-learn version 0.22
                   verbose=1
                   )
 
@@ -158,7 +176,7 @@ for lgnd_item in lgnd.legendHandles:
         pass
 
 fig.tight_layout()
-fig.savefig('tsne_test.png', dpi=300)
+fig.savefig('tsne_test' + suffx + '.png', dpi=300)
 plt.close(fig)
 
 # --------------------------------------------------------
@@ -195,7 +213,7 @@ fig.align_ylabels()
 
 fig.tight_layout()
 fig.subplots_adjust(hspace=0, wspace=0)
-fig.savefig('pca_test_vse.png', dpi=250)
+fig.savefig('pca_test_vse' + suffx + '.png', dpi=250)
 plt.close(fig)
 
 # plot only the first two components
@@ -223,5 +241,5 @@ for lgnd_item in lgnd.legendHandles:
         pass
 
 fig.tight_layout()
-fig.savefig('pca_test_2d.png', dpi=300)
+fig.savefig('pca_test_2d' + suffx + '.png', dpi=300)
 plt.close(fig)
